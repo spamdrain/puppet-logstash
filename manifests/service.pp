@@ -16,11 +16,8 @@ class logstash::service {
   }
 
   $default_startup_options = {
-    'JAVACMD'             => '/usr/bin/java',
     'LS_HOME'             => $logstash::home_dir,
     'LS_SETTINGS_DIR'     => $logstash::config_dir,
-    'LS_OPTS'             => "--path.settings=${logstash::config_dir}",
-    'LS_JAVA_OPTS'        => '""',
     'LS_PIDFILE'          => '/var/run/logstash.pid',
     'LS_USER'             => $logstash::logstash_user,
     'LS_GROUP'            => $logstash::logstash_group,
@@ -29,24 +26,12 @@ class logstash::service {
     'LS_NICE'             => '19',
     'SERVICE_NAME'        => '"logstash"',
     'SERVICE_DESCRIPTION' => '"logstash"',
+    'LS_OPTS'             => "--path.settings=${logstash::config_dir}",
+    'LS_JAVA_OPTS'        => '""',
   }
-
-  $default_jvm_options = [
-    '-Dfile.encoding=UTF-8',
-    '-Djava.awt.headless=true',
-    '-Xms256m',
-    '-Xmx1g',
-    '-XX:CMSInitiatingOccupancyFraction=75',
-    '-XX:+DisableExplicitGC',
-    '-XX:+HeapDumpOnOutOfMemoryError',
-    '-XX:+UseCMSInitiatingOccupancyOnly',
-    '-XX:+UseConcMarkSweepGC',
-    '-XX:+UseParNewGC',
-  ]
 
   $settings = merge($default_settings, $logstash::settings)
   $startup_options = merge($default_startup_options, $logstash::startup_options)
-  $jvm_options = $logstash::jvm_options
   $pipelines = $logstash::pipelines
 
   File {
@@ -85,9 +70,15 @@ class logstash::service {
       content => template('logstash/startup.options.erb'),
     }
 
-    # ..and make sure the JVM options are up to date.
-    file {'/etc/logstash/jvm.options':
-      content => template('logstash/jvm.options.erb'),
+    # Add any additional JVM options
+    $logstash::jvm_options.each |String $jvm_option| {
+      file_line { "logstash_jvm_option_${jvm_option}":
+        ensure => present,
+        path   => "${logstash::config_dir}/jvm.options",
+        line   => $jvm_option,
+        notify => Service['logstash'],
+        require => Package['logstash'],
+      }
     }
 
     # ..and pipelines.yml, if the user provided such. If they didn't, zero out
